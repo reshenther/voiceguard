@@ -18,6 +18,7 @@ data/feature_cache/
 # Model weights (too large for GitHub)
 *.pt
 *.pth
+!backend/voiceguard_model.pt
 
 # VS Code settings
 .vscode/
