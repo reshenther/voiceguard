@@ -1,0 +1,15 @@
+{
+    "python.defaultInterpreterPath": "C:\\Users\\Reshenther\\voice authentix\\venv312\\Scripts\\python.exe",
+    "python.terminal.activateEnvironment": true,
+    "python.terminal.activateEnvInCurrentTerminal": true,
+    "terminal.integrated.defaultProfile.windows": "Command Prompt",
+    "terminal.integrated.profiles.windows": {
+        "Command Prompt": {
+            "path": "cmd.exe",
+            "args": [
+                "/K",
+                "C:\\Users\\Reshenther\\voice authentix\\venv312\\Scripts\\activate.bat"
+            ]
+        }
+    }
+}

@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start VoiceGuard Backend",
+      "type": "shell",
+      "command": "\"C:\\Users\\Reshenther\\voice authentix\\backend\\start.bat\"",
+      "args": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "name": "VoiceGuard Server"
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}
