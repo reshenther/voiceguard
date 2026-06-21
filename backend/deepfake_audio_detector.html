@@ -1,0 +1,2396 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoiceGuard — Deepfake Audio Detector</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080b10;
+      --surface: #0d1219;
+      --surface2: #121922;
+      --border: #1e2d3d;
+      --accent: #00d4ff;
+      --accent2: #ff3c6e;
+      --accent3: #a6ff6e;
+      --text: #e2eaf5;
+      --text-dim: #5a7a99;
+      --text-mid: #8aa8c8;
+      --fake-color: #ff3c6e;
+      --real-color: #a6ff6e;
+      --warn-color: #ffb547;
+      --glow: 0 0 30px rgba(0, 212, 255, 0.15);
+      --glow-fake: 0 0 30px rgba(255, 60, 110, 0.2);
+      --glow-real: 0 0 30px rgba(166, 255, 110, 0.2);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Radial glow */
+    body::after {
+      content: '';
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 400px;
+      background: radial-gradient(ellipse, rgba(0, 212, 255, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px 60px;
+    }
+
+    /* ─── HEADER ─── */
+    header {
+      padding: 40px 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 40px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      border: 2px solid var(--accent);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--glow);
+      animation: pulse-border 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse-border {
+
+      0%,
+      100% {
+        box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
+      }
+
+      50% {
+        box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+      }
+    }
+
+    .logo-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .logo-text h1 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+
+    .logo-text p {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .status-badge {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent3);
+      animation: blink 2s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.3;
+      }
+    }
+
+    /* ─── MODE TABS ─── */
+    .mode-tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 5px;
+      width: fit-content;
+      margin: 0 auto 36px;
+    }
+
+    .mode-tab {
+      padding: 10px 28px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-family: 'Syne', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.25s ease;
+      background: transparent;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mode-tab.active {
+      background: var(--surface2);
+      color: var(--accent);
+      border: 1px solid var(--border);
+      box-shadow: var(--glow);
+    }
+
+    /* ─── MAIN PANELS ─── */
+    .panel {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ─── UPLOAD PANEL ─── */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 20px;
+      padding: 60px 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: var(--surface);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .upload-zone::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, rgba(0, 212, 255, 0.04) 0%, transparent 70%);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .upload-zone:hover,
+    .upload-zone.drag-over {
+      border-color: var(--accent);
+      box-shadow: var(--glow);
+    }
+
+    .upload-zone:hover::before,
+    .upload-zone.drag-over::before {
+      opacity: 1;
+    }
+
+    .upload-icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 20px;
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+    }
+
+    .upload-zone:hover .upload-icon {
+      border-color: var(--accent);
+      box-shadow: var(--glow);
+    }
+
+    .upload-zone h2 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .upload-zone p {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .supported-formats {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+      margin-top: 16px;
+      padding: 8px 16px;
+      background: var(--surface2);
+      border-radius: 8px;
+      display: inline-block;
+    }
+
+    #fileInput {
+      display: none;
+    }
+
+    /* ─── AUDIO PREVIEW ─── */
+    .audio-preview {
+      display: none;
+      margin-top: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 24px;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .audio-preview.visible {
+      display: flex;
+    }
+
+    .file-icon {
+      width: 44px;
+      height: 44px;
+      background: rgba(0, 212, 255, 0.08);
+      border: 1px solid rgba(0, 212, 255, 0.2);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .file-info {
+      flex: 1;
+    }
+
+    .file-info .name {
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .file-info .meta {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 3px;
+    }
+
+    .analyze-btn {
+      padding: 12px 28px;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 10px;
+      font-family: 'Syne', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    .analyze-btn:hover {
+      background: #33ddff;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 20px rgba(0, 212, 255, 0.3);
+    }
+
+    .analyze-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ─── WAVEFORM CANVAS ─── */
+    .waveform-container {
+      margin-top: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 20px;
+      display: none;
+    }
+
+    .waveform-container.visible {
+      display: block;
+    }
+
+    .waveform-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+    }
+
+    canvas {
+      width: 100%;
+      display: block;
+      border-radius: 8px;
+    }
+
+    /* ─── RESULT CARD ─── */
+    .result-card {
+      display: none;
+      margin-top: 24px;
+      border-radius: 20px;
+      padding: 28px 32px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      animation: resultReveal 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes resultReveal {
+      from {
+        opacity: 0;
+        transform: scale(0.95) translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    .result-card.visible {
+      display: block;
+    }
+
+    .result-card.fake {
+      border-color: rgba(255, 60, 110, 0.3);
+      background: linear-gradient(135deg, var(--surface) 0%, rgba(255, 60, 110, 0.05) 100%);
+      box-shadow: var(--glow-fake);
+    }
+
+    .result-card.real {
+      border-color: rgba(166, 255, 110, 0.3);
+      background: linear-gradient(135deg, var(--surface) 0%, rgba(166, 255, 110, 0.05) 100%);
+      box-shadow: var(--glow-real);
+    }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .result-verdict {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .verdict-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    .fake .verdict-icon {
+      background: rgba(255, 60, 110, 0.15);
+      border: 1px solid rgba(255, 60, 110, 0.3);
+    }
+
+    .real .verdict-icon {
+      background: rgba(166, 255, 110, 0.15);
+      border: 1px solid rgba(166, 255, 110, 0.3);
+    }
+
+    .verdict-text h3 {
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .fake .verdict-text h3 {
+      color: var(--fake-color);
+    }
+
+    .real .verdict-text h3 {
+      color: var(--real-color);
+    }
+
+    .verdict-text p {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 3px;
+    }
+
+    .confidence-badge {
+      font-family: 'Space Mono', monospace;
+      font-size: 24px;
+      font-weight: 700;
+      padding: 10px 20px;
+      border-radius: 12px;
+      border: 1px solid currentColor;
+    }
+
+    .fake .confidence-badge {
+      color: var(--fake-color);
+      background: rgba(255, 60, 110, 0.08);
+    }
+
+    .real .confidence-badge {
+      color: var(--real-color);
+      background: rgba(166, 255, 110, 0.08);
+    }
+
+    /* Feature scores */
+    .feature-scores {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .feature-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+
+    .feature-name {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+
+    .feature-bar-track {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+
+    .feature-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .feature-score-val {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      color: var(--text-mid);
+    }
+
+    /* Overall bar */
+    .overall-bar-section {
+      margin-top: 8px;
+    }
+
+    .overall-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .overall-label span {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .overall-track {
+      height: 10px;
+      background: var(--border);
+      border-radius: 5px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .overall-fill {
+      height: 100%;
+      border-radius: 5px;
+      transition: width 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .fake .overall-fill {
+      background: linear-gradient(90deg, #ff3c6e, #ff6b35);
+    }
+
+    .real .overall-fill {
+      background: linear-gradient(90deg, #a6ff6e, #6effc8);
+    }
+
+    /* ─── LIVE DETECTION ─── */
+    .live-panel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 720px) {
+      .live-panel-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .live-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+    }
+
+    .live-card-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .live-controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .ctrl-btn {
+      flex: 1;
+      padding: 13px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      font-family: 'Syne', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .ctrl-btn.start {
+      background: rgba(166, 255, 110, 0.1);
+      border-color: rgba(166, 255, 110, 0.3);
+      color: var(--real-color);
+    }
+
+    .ctrl-btn.start:hover {
+      background: rgba(166, 255, 110, 0.2);
+      box-shadow: 0 0 20px rgba(166, 255, 110, 0.15);
+    }
+
+    .ctrl-btn.stop {
+      background: rgba(255, 60, 110, 0.1);
+      border-color: rgba(255, 60, 110, 0.3);
+      color: var(--fake-color);
+    }
+
+    .ctrl-btn.stop:hover {
+      background: rgba(255, 60, 110, 0.2);
+      box-shadow: 0 0 20px rgba(255, 60, 110, 0.15);
+    }
+
+    .ctrl-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    /* Live waveform */
+    .live-waveform {
+      height: 80px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 12px;
+      position: relative;
+    }
+
+    #liveCanvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Frequency spectrum */
+    .live-freq-spectrum {
+      height: 70px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 12px;
+      position: relative;
+    }
+
+    #freqCanvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    .freq-readout {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+    }
+
+    .freq-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .freq-value {
+      font-family: 'Space Mono', monospace;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 1px;
+    }
+
+    .freq-peak {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-mid);
+    }
+
+    .live-status {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .live-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+
+    .live-indicator.recording {
+      background: var(--fake-color);
+      animation: blink 0.8s ease-in-out infinite;
+    }
+
+    /* Live result display */
+    .live-result-display {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      text-align: center;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.4s ease;
+    }
+
+    .live-result-display.fake {
+      border-color: rgba(255, 60, 110, 0.4);
+      background: rgba(255, 60, 110, 0.05);
+      box-shadow: var(--glow-fake);
+    }
+
+    .live-result-display.real {
+      border-color: rgba(166, 255, 110, 0.4);
+      background: rgba(166, 255, 110, 0.05);
+      box-shadow: var(--glow-real);
+    }
+
+    .live-verdict {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -1px;
+    }
+
+    .live-result-display.fake .live-verdict {
+      color: var(--fake-color);
+    }
+
+    .live-result-display.real .live-verdict {
+      color: var(--real-color);
+    }
+
+    .live-conf {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .live-idle-text {
+      color: var(--text-dim);
+      font-size: 13px;
+      font-family: 'Space Mono', monospace;
+    }
+
+    /* History */
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 320px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      animation: slideIn 0.3s ease;
+      font-size: 13px;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .history-badge {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 5px;
+      flex-shrink: 0;
+    }
+
+    .history-badge.fake {
+      background: rgba(255, 60, 110, 0.15);
+      color: var(--fake-color);
+      border: 1px solid rgba(255, 60, 110, 0.3);
+    }
+
+    .history-badge.real {
+      background: rgba(166, 255, 110, 0.15);
+      color: var(--real-color);
+      border: 1px solid rgba(166, 255, 110, 0.3);
+    }
+
+    .history-info {
+      flex: 1;
+      color: var(--text-mid);
+      font-size: 12px;
+    }
+
+    .history-time {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--text-dim);
+    }
+
+    .no-history {
+      text-align: center;
+      color: var(--text-dim);
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      padding: 30px;
+    }
+
+    /* ─── LOADING ─── */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 11, 16, 0.85);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .loading-overlay.visible {
+      display: flex;
+    }
+
+    .spinner-ring {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loading-text {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+    }
+
+    .loading-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .loading-step {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .loading-step.active {
+      opacity: 1;
+      color: var(--accent);
+    }
+
+    .loading-step.done {
+      opacity: 0.5;
+      color: var(--accent3);
+    }
+
+    .step-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+
+    /* ─── FEATURES INFO ─── */
+    .features-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-top: 36px;
+    }
+
+    @media (max-width: 720px) {
+      .features-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .feature-pill {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .feature-pill:hover {
+      border-color: var(--accent);
+      box-shadow: var(--glow);
+      transform: translateY(-2px);
+    }
+
+    .feature-pill-name {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .feature-pill-desc {
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.4;
+    }
+
+    /* ─── NOISE INDICATOR ─── */
+    .noise-meter {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+    }
+
+    .noise-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      width: 80px;
+      flex-shrink: 0;
+    }
+
+    .noise-track {
+      flex: 1;
+      height: 5px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .noise-fill {
+      height: 100%;
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .noise-val {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-mid);
+      width: 40px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ─── TOAST ─── */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 24px;
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      color: var(--text);
+      z-index: 200;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      white-space: nowrap;
+    }
+
+    .toast.visible {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Chunk counter */
+    .chunk-counter {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    /* ─── LANGUAGE SWITCHER ─── */
+    .lang-switcher {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .lang-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 7px 14px;
+      color: var(--text-dim);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      letter-spacing: 0.5px;
+    }
+
+    .lang-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: var(--glow);
+    }
+
+    .lang-flag {
+      font-size: 15px;
+    }
+
+    .lang-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      z-index: 999;
+      min-width: 170px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+
+    .lang-dropdown.open {
+      display: block;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .lang-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 16px;
+      cursor: pointer;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      transition: all 0.15s;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .lang-option:last-child {
+      border-bottom: none;
+    }
+
+    .lang-option:hover {
+      background: var(--surface);
+      color: var(--accent);
+    }
+
+    .lang-option.active {
+      color: var(--accent);
+      background: rgba(0, 212, 255, 0.06);
+    }
+
+    .lang-option .lang-name {
+      flex: 1;
+    }
+
+    .lang-option .lang-check {
+      color: var(--accent);
+      font-size: 12px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Loading overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner-ring"></div>
+    <div class="loading-text">ANALYZING AUDIO</div>
+    <div class="loading-steps">
+      <div class="loading-step" id="step1"><span class="step-dot"></span> Denoising audio signal</div>
+      <div class="loading-step" id="step2"><span class="step-dot"></span> Extracting Mel-Spectrogram</div>
+      <div class="loading-step" id="step3"><span class="step-dot"></span> Computing MFCC features</div>
+      <div class="loading-step" id="step4"><span class="step-dot"></span> Computing CQCC & IMFCC</div>
+      <div class="loading-step" id="step5"><span class="step-dot"></span> Analyzing phase spectrum</div>
+      <div class="loading-step" id="step6"><span class="step-dot"></span> Running deep learning model</div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <div class="container">
+
+    <!-- Header -->
+    <header>
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+        </div>
+        <div class="logo-text">
+          <h1>VoiceGuard</h1>
+          <p>Deepfake Audio Detection System</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <!-- Language Switcher -->
+        <div class="lang-switcher" id="langSwitcher">
+          <button class="lang-btn" onclick="toggleLangDropdown()">
+            <span class="lang-flag" id="currentFlag">🇬🇧</span>
+            <span id="currentLangCode">EN</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <div class="lang-dropdown" id="langDropdown">
+            <div class="lang-option active" onclick="setLanguage('en')">
+              <span class="lang-flag">🇬🇧</span>
+              <span class="lang-name">English</span>
+              <span class="lang-check" id="check-en">✓</span>
+            </div>
+            <div class="lang-option" onclick="setLanguage('ta')">
+              <span class="lang-flag">🇮🇳</span>
+              <span class="lang-name">தமிழ்</span>
+              <span class="lang-check" id="check-ta" style="display:none">✓</span>
+            </div>
+            <div class="lang-option" onclick="setLanguage('hi')">
+              <span class="lang-flag">🇮🇳</span>
+              <span class="lang-name">हिन्दी</span>
+              <span class="lang-check" id="check-hi" style="display:none">✓</span>
+            </div>
+            <div class="lang-option" onclick="setLanguage('te')">
+              <span class="lang-flag">🇮🇳</span>
+              <span class="lang-name">తెలుగు</span>
+              <span class="lang-check" id="check-te" style="display:none">✓</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="status-badge">
+          <div class="status-dot"></div>
+          <span data-i18n="modelReady">MODEL READY</span>
+        </div>
+      </div>
+
+    </header>
+
+    <!-- Mode Tabs -->
+    <div class="mode-tabs">
+      <button class="mode-tab active" onclick="switchMode('upload')" id="tabUpload">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        <span data-i18n="uploadAudio">Upload Audio</span>
+      </button>
+      <button class="mode-tab" onclick="switchMode('live')" id="tabLive">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="12" cy="12" r="6" />
+          <circle cx="12" cy="12" r="10" />
+        </svg>
+        <span data-i18n="liveDetection">Live Detection</span>
+      </button>
+    </div>
+
+    <!-- ═══ UPLOAD PANEL ═══ -->
+    <div class="panel active" id="panelUpload">
+
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept=".mp3,.wav,.ogg,.flac,.m4a,.aac" onchange="handleFileSelect(event)">
+        <div class="upload-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5a7a99" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+        </div>
+        <h2>Drop audio file here</h2>
+        <p>or click to browse files</p>
+        <div class="supported-formats">MP3 · WAV · OGG · FLAC · M4A · AAC</div>
+      </div>
+
+      <!-- Audio Preview -->
+      <div class="audio-preview" id="audioPreview">
+        <div class="file-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2">
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+          </svg>
+        </div>
+        <div class="file-info">
+          <div class="name" id="fileName">—</div>
+          <div class="meta" id="fileMeta">—</div>
+        </div>
+        <audio id="audioPlayer" controls style="flex:1;max-width:220px;filter:invert(0.85) hue-rotate(180deg);"></audio>
+        <button class="analyze-btn" id="analyzeBtn" onclick="analyzeAudio()">Analyze</button>
+      </div>
+
+      <!-- Waveform -->
+      <div class="waveform-container" id="waveformContainer">
+        <div class="waveform-label">Waveform Visualization</div>
+        <canvas id="waveformCanvas" height="80"></canvas>
+      </div>
+
+      <!-- Result -->
+      <div class="result-card" id="resultCard">
+        <div class="result-header">
+          <div class="result-verdict">
+            <div class="verdict-icon" id="verdictIcon">❓</div>
+            <div class="verdict-text">
+              <h3 id="verdictText">—</h3>
+              <p id="verdictSub">—</p>
+            </div>
+          </div>
+          <div class="confidence-badge" id="confidenceBadge">—%</div>
+        </div>
+
+        <div class="noise-meter">
+          <div class="noise-label">SNR EST.</div>
+          <div class="noise-track">
+            <div class="noise-fill" id="snrFill" style="background:#00d4ff;"></div>
+          </div>
+          <div class="noise-val" id="snrVal">—</div>
+        </div>
+
+        <div class="feature-scores" id="featureScores"></div>
+
+        <div class="overall-bar-section">
+          <div class="overall-label">
+            <span>REAL</span>
+            <span>FAKE</span>
+          </div>
+          <div class="overall-track">
+            <div class="overall-fill" id="overallFill" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══ LIVE PANEL ═══ -->
+    <div class="panel" id="panelLive">
+      <div class="live-panel-grid">
+
+        <!-- Left: Controls + Live View -->
+        <div>
+          <div class="live-card">
+            <div class="live-card-title">
+              <div class="live-indicator" id="liveIndicator"></div>
+              Microphone Input
+            </div>
+
+            <div class="live-controls">
+              <button class="ctrl-btn start" id="startBtn" onclick="startLive()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="12" r="8" />
+                </svg>
+                Start
+              </button>
+              <button class="ctrl-btn stop" id="stopBtn" onclick="stopLive()" disabled>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                </svg>
+                Stop
+              </button>
+            </div>
+
+            <div class="live-status">
+              <div class="live-indicator" id="liveStatusDot"></div>
+              <span id="liveStatusText">Ready — click Start to begin</span>
+            </div>
+
+            <div class="live-waveform">
+              <canvas id="liveCanvas"></canvas>
+            </div>
+
+            <div class="live-card-title" style="margin-bottom:8px;">
+              <span>⬛</span> Frequency Spectrum
+            </div>
+            <div class="live-freq-spectrum">
+              <canvas id="freqCanvas"></canvas>
+            </div>
+
+            <div class="freq-readout">
+              <span class="freq-label">Dominant Freq</span>
+              <span class="freq-value" id="freqValueDisplay">— Hz</span>
+              <span class="freq-peak" id="freqPeakDisplay">Peak: —</span>
+            </div>
+
+            <div class="noise-meter">
+              <div class="noise-label">NOISE LVL</div>
+              <div class="noise-track">
+                <div class="noise-fill" id="liveNoiseFill" style="background:#ffb547;"></div>
+              </div>
+              <div class="noise-val" id="liveNoiseVal">—</div>
+            </div>
+
+            <div class="chunk-counter" id="chunkCounter">Chunks analyzed: 0</div>
+          </div>
+
+          <div class="live-card" style="margin-top:16px;">
+            <div class="live-card-title">Live Result</div>
+            <div class="live-result-display" id="liveResultDisplay">
+              <div class="live-idle-text">Awaiting audio input...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: History -->
+        <div class="live-card">
+          <div class="live-card-title">
+            Detection History
+            <span style="margin-left:auto;cursor:pointer;color:var(--text-dim);font-size:10px;"
+              onclick="clearHistory()">CLEAR</span>
+          </div>
+          <div class="history-list" id="historyList">
+            <div class="no-history">No detections yet</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Feature pills -->
+    <div class="features-row">
+      <div class="feature-pill">
+        <div class="feature-pill-name">MEL</div>
+        <div class="feature-pill-desc">Spectrogram tonal structure</div>
+      </div>
+      <div class="feature-pill">
+        <div class="feature-pill-name">MFCC</div>
+        <div class="feature-pill-desc">Vocal tract shape analysis</div>
+      </div>
+      <div class="feature-pill">
+        <div class="feature-pill-name">CQCC</div>
+        <div class="feature-pill-desc">Noise-robust log-scale features</div>
+      </div>
+      <div class="feature-pill">
+        <div class="feature-pill-name">IMFCC</div>
+        <div class="feature-pill-desc">High-freq synthesis artifacts</div>
+      </div>
+      <div class="feature-pill">
+        <div class="feature-pill-name">PHASE</div>
+        <div class="feature-pill-desc">Phase coherence patterns</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ════════════════════════════════════════════
+    // STATE
+    // ════════════════════════════════════════════
+    let audioContext = null;
+    let analyserNode = null;
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let liveAnimFrame = null;
+    let chunkCount = 0;
+    let isRecording = false;
+    let currentFile = null;
+    let historyItems = [];
+    let chunkTimer = null;
+
+    // ════════════════════════════════════════════
+    // MODE SWITCH
+    // ════════════════════════════════════════════
+    function switchMode(mode) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('panel' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
+      document.getElementById('tab' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
+    }
+
+    // ════════════════════════════════════════════
+    // UPLOAD MODE
+    // ════════════════════════════════════════════
+    const uploadZone = document.getElementById('uploadZone');
+
+    uploadZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadZone.classList.add('drag-over');
+    });
+
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (file) loadFile(file);
+    }
+
+    function loadFile(file) {
+      const validTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/flac', 'audio/mp4', 'audio/aac', 'audio/x-m4a'];
+      const validExts = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'];
+      const ext = '.' + file.name.split('.').pop().toLowerCase();
+
+      if (!validExts.includes(ext)) {
+        showToast('⚠️ Unsupported file format');
+        return;
+      }
+
+      currentFile = file;
+      const url = URL.createObjectURL(file);
+      const audio = document.getElementById('audioPlayer');
+      audio.src = url;
+
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('fileMeta').textContent =
+        formatBytes(file.size) + ' · ' + ext.toUpperCase().slice(1);
+
+      document.getElementById('audioPreview').classList.add('visible');
+      document.getElementById('resultCard').classList.remove('visible');
+      document.getElementById('resultCard').style.display = 'none';
+
+      // Draw waveform
+      drawWaveformFromFile(file);
+    }
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    async function drawWaveformFromFile(file) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const buffer = await file.arrayBuffer();
+        const audioBuffer = await ctx.decodeAudioData(buffer);
+        const data = audioBuffer.getChannelData(0);
+
+        const container = document.getElementById('waveformContainer');
+        container.classList.add('visible');
+        const canvas = document.getElementById('waveformCanvas');
+        canvas.width = canvas.offsetWidth * window.devicePixelRatio || 800;
+        canvas.height = 80 * window.devicePixelRatio || 80;
+        const c = canvas.getContext('2d');
+        c.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+
+        const W = canvas.offsetWidth || 800;
+        const H = 80;
+        c.clearRect(0, 0, W, H);
+
+        const step = Math.ceil(data.length / W);
+        const mid = H / 2;
+
+        const grad = c.createLinearGradient(0, 0, W, 0);
+        grad.addColorStop(0, '#00d4ff');
+        grad.addColorStop(0.5, '#a6ff6e');
+        grad.addColorStop(1, '#00d4ff');
+
+        c.strokeStyle = grad;
+        c.lineWidth = 1.2;
+        c.beginPath();
+
+        for (let i = 0; i < W; i++) {
+          let min = 1, max = -1;
+          for (let j = 0; j < step; j++) {
+            const val = data[i * step + j] || 0;
+            if (val < min) min = val;
+            if (val > max) max = val;
+          }
+          c.moveTo(i, mid + min * mid * 0.9);
+          c.lineTo(i, mid + max * mid * 0.9);
+        }
+        c.stroke();
+        ctx.close();
+      } catch (e) {
+        console.log('Waveform draw skipped:', e.message);
+      }
+    }
+
+    async function analyzeAudio() {
+      if (!currentFile) return;
+
+      const btn = document.getElementById('analyzeBtn');
+      btn.disabled = true;
+
+      showLoading();
+
+      // Simulate multi-feature extraction pipeline with delays
+      const steps = ['step1', 'step2', 'step3', 'step4', 'step5', 'step6'];
+      const delays = [400, 700, 900, 1100, 1300, 1600];
+
+      for (let i = 0; i < steps.length; i++) {
+        await sleep(delays[i]);
+        document.getElementById(steps[i]).classList.add('active');
+      }
+
+      await sleep(500);
+
+      // Mark all done
+      steps.forEach(s => {
+        document.getElementById(s).classList.remove('active');
+        document.getElementById(s).classList.add('done');
+      });
+
+      await sleep(300);
+      hideLoading();
+
+      // Generate simulated analysis result
+      const result = simulateAnalysis(currentFile);
+      displayResult(result);
+
+      btn.disabled = false;
+    }
+
+    function simulateAnalysis(file) {
+      // Deterministic seed from filename for consistent demo results
+      let seed = 0;
+      for (let i = 0; i < file.name.length; i++) seed += file.name.charCodeAt(i);
+
+      const rng = (min, max, offset = 0) => {
+        seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+        return min + ((Math.abs(seed) + offset) % 1000) / 1000 * (max - min);
+      };
+
+      const fakeProbBase = rng(0.1, 0.95);
+      const isFake = fakeProbBase > 0.5;
+
+      const features = {
+        'MEL-SPEC': rng(0.55, 0.99, 100),
+        'MFCC': rng(0.55, 0.99, 200),
+        'CQCC': rng(0.55, 0.99, 300),
+        'IMFCC': rng(0.55, 0.99, 400),
+        'PHASE': rng(0.55, 0.99, 500),
+      };
+
+      // Skew features toward the verdict
+      const skew = isFake ? 1 : -1;
+      Object.keys(features).forEach(k => {
+        features[k] = Math.max(0.45, Math.min(0.99, features[k] + skew * rng(0.05, 0.2, 600)));
+      });
+
+      const confidence = (Object.values(features).reduce((a, b) => a + b, 0) / 5);
+      const snr = rng(10, 35, 700);
+
+      return { isFake, confidence, features, snr, fakeProbBase };
+    }
+
+    function displayResult(result) {
+      const card = document.getElementById('resultCard');
+      card.style.display = 'block';
+      card.classList.add('visible');
+      card.className = 'result-card visible ' + (result.isFake ? 'fake' : 'real');
+
+      document.getElementById('verdictIcon').textContent = result.isFake ? '⚠️' : '✅';
+      document.getElementById('verdictText').textContent = result.isFake ? 'AI VOICE DETECTED' : 'REAL VOICE';
+      document.getElementById('verdictSub').textContent = result.isFake
+        ? 'Neural vocoder artifacts found across multiple features'
+        : 'Natural speech patterns consistent with human voice';
+
+      const confPct = (result.confidence * 100).toFixed(1);
+      document.getElementById('confidenceBadge').textContent = confPct + '%';
+
+      // SNR
+      const snrPct = Math.min(100, (result.snr / 40) * 100);
+      document.getElementById('snrFill').style.width = snrPct + '%';
+      document.getElementById('snrFill').style.background = result.snr > 20 ? '#a6ff6e' : result.snr > 10 ? '#ffb547' : '#ff3c6e';
+      document.getElementById('snrVal').textContent = result.snr.toFixed(0) + 'dB';
+
+      // Feature scores
+      const scoresDiv = document.getElementById('featureScores');
+      scoresDiv.innerHTML = '';
+
+      const featureColors = {
+        'MEL-SPEC': '#00d4ff',
+        'MFCC': '#a6ff6e',
+        'CQCC': '#ffb547',
+        'IMFCC': '#ff6bcd',
+        'PHASE': '#6b8fff',
+      };
+
+      Object.entries(result.features).forEach(([name, score]) => {
+        const pct = (score * 100).toFixed(1);
+        const div = document.createElement('div');
+        div.className = 'feature-item';
+        div.innerHTML = `
+      <div class="feature-name">${name}</div>
+      <div class="feature-bar-track">
+        <div class="feature-bar-fill" style="width:0%;background:${featureColors[name]};"></div>
+      </div>
+      <div class="feature-score-val">${pct}% ${result.isFake ? 'fake signal' : 'real signal'}</div>
+    `;
+        scoresDiv.appendChild(div);
+
+        setTimeout(() => {
+          div.querySelector('.feature-bar-fill').style.width = pct + '%';
+        }, 100);
+      });
+
+      // Overall bar (fake probability from right)
+      const fakePct = result.isFake ? (result.confidence * 100) : ((1 - result.confidence) * 100);
+      setTimeout(() => {
+        document.getElementById('overallFill').style.width = fakePct + '%';
+      }, 200);
+
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // ════════════════════════════════════════════
+    // LIVE DETECTION
+    // ════════════════════════════════════════════
+    async function startLive() {
+      try {
+        // Disable browser audio processing so the raw mic signal reaches
+        // the Web Audio API — echoCancellation/autoGainControl can make
+        // the signal appear completely flat to the analyser node.
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 1
+          },
+          video: false
+        });
+      } catch (e) {
+        // Fallback: retry with basic constraints if browser blocked above
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        } catch (e2) {
+          showToast('⚠️ Microphone access denied. Please allow mic permissions.');
+          return;
+        }
+      }
+
+      isRecording = true;
+      chunkCount = 0;
+
+      // Set up AudioContext for waveform visualization
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      // Always resume — Chrome starts AudioContext suspended even from a click
+      await audioContext.resume();
+
+      analyserNode = audioContext.createAnalyser();
+      analyserNode.fftSize = 2048;
+      analyserNode.smoothingTimeConstant = 0.8;
+      analyserNode.minDecibels = -90;
+      analyserNode.maxDecibels = -10;
+
+      // GainNode: boost quiet mic signal so waveform shows visible spikes
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 4.0;   // ×4 amplification
+
+      const source = audioContext.createMediaStreamSource(mediaStream);
+      source.connect(gainNode);
+      gainNode.connect(analyserNode);
+
+      // ── CRITICAL FIX ──────────────────────────────────────────────────
+      // Chrome/Edge use lazy audio graph evaluation: without a path to the
+      // destination node, AnalyserNode never receives data (all 128 = flat).
+      // Connect through a ZERO-VOLUME gain so processing runs silently.
+      const silentOut = audioContext.createGain();
+      silentOut.gain.value = 0;          // muted — no speaker output
+      analyserNode.connect(silentOut);
+      silentOut.connect(audioContext.destination);
+      // ──────────────────────────────────────────────────────────────────
+
+      // Set up MediaRecorder for chunked analysis
+      mediaRecorder = new MediaRecorder(mediaStream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        if (audioChunks.length > 0) {
+          processLiveChunk(new Blob(audioChunks, { type: 'audio/webm' }));
+          audioChunks = [];
+        }
+      };
+
+      mediaRecorder.start();
+
+      // Process every 3 seconds
+      chunkTimer = setInterval(() => {
+        if (isRecording && mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+          setTimeout(() => {
+            if (isRecording) mediaRecorder.start();
+          }, 100);
+        }
+      }, 3000);
+
+      // Update UI
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('stopBtn').disabled = false;
+      document.getElementById('liveIndicator').classList.add('recording');
+      document.getElementById('liveStatusDot').classList.add('recording');
+      document.getElementById('liveStatusText').textContent = 'Recording — analyzing every 3 seconds';
+
+      // Start waveform animation
+      drawLiveWaveform();
+
+      showToast('🎙️ Live detection started');
+    }
+
+    function stopLive() {
+      isRecording = false;
+
+      if (chunkTimer) { clearInterval(chunkTimer); chunkTimer = null; }
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+      if (audioContext) { audioContext.close(); audioContext = null; }
+      if (liveAnimFrame) { cancelAnimationFrame(liveAnimFrame); liveAnimFrame = null; }
+
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = true;
+      document.getElementById('liveIndicator').classList.remove('recording');
+      document.getElementById('liveStatusDot').classList.remove('recording');
+      document.getElementById('liveStatusText').textContent = 'Stopped — click Start to begin again';
+      document.getElementById('liveNoiseFill').style.width = '0%';
+      document.getElementById('liveNoiseVal').textContent = '—';
+      document.getElementById('freqValueDisplay').textContent = '— Hz';
+      document.getElementById('freqPeakDisplay').textContent = 'Peak: —';
+
+      // Clear live canvases
+      const canvas = document.getElementById('liveCanvas');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const freqCanvas = document.getElementById('freqCanvas');
+      const fCtx = freqCanvas.getContext('2d');
+      fCtx.clearRect(0, 0, freqCanvas.width, freqCanvas.height);
+
+      showToast('⏹️ Live detection stopped');
+    }
+
+    function drawLiveWaveform() {
+      if (!analyserNode || !isRecording) return;
+
+      const canvas = document.getElementById('liveCanvas');
+      const freqCanvas = document.getElementById('freqCanvas');
+      const bufLen = analyserNode.frequencyBinCount;
+      const timeArr = new Uint8Array(bufLen);
+      const freqArr = new Uint8Array(bufLen);
+
+      function draw() {
+        if (!isRecording) return;
+        liveAnimFrame = requestAnimationFrame(draw);
+
+        // ── Fix canvas dimensions every frame in case layout shifted ──
+        const W = canvas.offsetWidth || 400;
+        const H = canvas.offsetHeight || 80;
+        if (canvas.width !== W) canvas.width = W;
+        if (canvas.height !== H) canvas.height = H;
+
+        const fW = freqCanvas.offsetWidth || 400;
+        const fH = freqCanvas.offsetHeight || 70;
+        if (freqCanvas.width !== fW) freqCanvas.width = fW;
+        if (freqCanvas.height !== fH) freqCanvas.height = fH;
+
+        const ctx = canvas.getContext('2d');
+        const fCtx = freqCanvas.getContext('2d');
+
+        // ── Time-domain data (waveform) ──
+        analyserNode.getByteTimeDomainData(timeArr);
+
+        // ── Frequency-domain data (spectrum) ──
+        analyserNode.getByteFrequencyData(freqArr);
+
+        // ─ Noise / RMS ─
+        let sumSq = 0;
+        for (let i = 0; i < bufLen; i++) {
+          const v = (timeArr[i] - 128) / 128;
+          sumSq += v * v;
+        }
+        const rms = Math.sqrt(sumSq / bufLen);
+        const noisePct = Math.min(100, rms * 300);
+        const noiseDb = rms > 0 ? (20 * Math.log10(rms + 0.001) + 40).toFixed(0) : '—';
+
+        document.getElementById('liveNoiseFill').style.width = noisePct + '%';
+        document.getElementById('liveNoiseFill').style.background =
+          noisePct < 30 ? '#a6ff6e' : noisePct < 60 ? '#ffb547' : '#ff3c6e';
+        document.getElementById('liveNoiseVal').textContent = noiseDb + 'dB';
+
+        // ─ Dominant frequency ─
+        let peakBin = 0, peakVal = 0;
+        // Skip bin 0 (DC offset)
+        for (let i = 1; i < bufLen; i++) {
+          if (freqArr[i] > peakVal) { peakVal = freqArr[i]; peakBin = i; }
+        }
+        const sampleRate = audioContext.sampleRate;
+        const dominantHz = Math.round((peakBin * sampleRate) / (analyserNode.fftSize));
+        const freqValEl = document.getElementById('freqValueDisplay');
+        const freqPeakEl = document.getElementById('freqPeakDisplay');
+        if (peakVal > 10) {
+          freqValEl.textContent = dominantHz >= 1000
+            ? (dominantHz / 1000).toFixed(2) + ' kHz'
+            : dominantHz + ' Hz';
+          freqPeakEl.textContent = 'Magnitude: ' + peakVal;
+        } else {
+          freqValEl.textContent = '— Hz';
+          freqPeakEl.textContent = 'Peak: —';
+        }
+
+        // ════ Draw waveform ════
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = 'rgba(13,18,25,0.5)';
+        ctx.fillRect(0, 0, W, H);
+
+        const wGrad = ctx.createLinearGradient(0, 0, W, 0);
+        wGrad.addColorStop(0, '#00d4ff');
+        wGrad.addColorStop(1, '#a6ff6e');
+        ctx.strokeStyle = wGrad;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+
+        const sliceW = W / bufLen;
+        let x = 0;
+        for (let i = 0; i < bufLen; i++) {
+          // Normalize: 128 = silence → 0, range -1 to +1
+          const v = (timeArr[i] - 128) / 128.0;
+          // Center on H/2, amplify so quiet speech still shows spikes
+          const y = H / 2 + v * H * 0.85;
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          x += sliceW;
+        }
+        ctx.stroke();
+
+        // ════ Draw frequency spectrum ════
+        fCtx.clearRect(0, 0, fW, fH);
+        fCtx.fillStyle = 'rgba(13,18,25,0.5)';
+        fCtx.fillRect(0, 0, fW, fH);
+
+        const barW = fW / bufLen;
+        for (let i = 0; i < bufLen; i++) {
+          const barH = (freqArr[i] / 255) * fH;
+          // colour gradient: low=blue, mid=cyan, high=green, peaks=red
+          const ratio = freqArr[i] / 255;
+          let r, g, b;
+          if (ratio < 0.5) {
+            // blue → cyan
+            r = 0;
+            g = Math.round(ratio * 2 * 212);
+            b = 255;
+          } else {
+            // cyan → accent-green with hot peaks
+            r = Math.round((ratio - 0.5) * 2 * 255);
+            g = Math.round(166 + (ratio - 0.5) * 2 * (255 - 166));
+            b = Math.round(255 - (ratio - 0.5) * 2 * 255);
+          }
+          // Highlight dominant bin
+          if (i === peakBin && peakVal > 10) { r = 255; g = 60; b = 110; }
+
+          fCtx.fillStyle = `rgb(${r},${g},${b})`;
+          fCtx.fillRect(i * barW, fH - barH, Math.max(1, barW - 0.5), barH);
+        }
+
+        // Draw frequency axis labels (kHz markers)
+        fCtx.fillStyle = 'rgba(90,122,153,0.7)';
+        fCtx.font = '8px Space Mono, monospace';
+        const nyquist = sampleRate / 2;
+        [0.5, 1, 2, 4, 8].forEach(khz => {
+          const bin = Math.round((khz * 1000 * analyserNode.fftSize) / sampleRate);
+          if (bin < bufLen) {
+            const px = (bin / bufLen) * fW;
+            fCtx.fillStyle = 'rgba(90,122,153,0.5)';
+            fCtx.fillRect(px, 0, 1, fH);
+            fCtx.fillStyle = 'rgba(90,122,153,0.9)';
+            fCtx.fillText(khz + 'k', px + 2, fH - 3);
+          }
+        });
+      }
+
+      draw();
+    }
+
+    function processLiveChunk(blob) {
+      chunkCount++;
+      document.getElementById('chunkCounter').textContent = `Chunks analyzed: ${chunkCount}`;
+
+      // Simulate analysis result for this chunk
+      const seed = Date.now() + chunkCount * 7919;
+      const fakeProbability = pseudoRandom(seed);
+      const isFake = fakeProbability > 0.5;
+      const confidence = 0.6 + pseudoRandom(seed + 1) * 0.38;
+
+      updateLiveResult(isFake, confidence);
+      addToHistory(isFake, confidence, chunkCount);
+    }
+
+    function pseudoRandom(seed) {
+      let x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
+    }
+
+    function updateLiveResult(isFake, confidence) {
+      const display = document.getElementById('liveResultDisplay');
+      display.innerHTML = '';
+      display.className = 'live-result-display ' + (isFake ? 'fake' : 'real');
+
+      const emoji = document.createElement('div');
+      emoji.style.fontSize = '32px';
+      emoji.textContent = isFake ? '⚠️' : '✅';
+
+      const verdict = document.createElement('div');
+      verdict.className = 'live-verdict';
+      verdict.textContent = isFake ? 'AI VOICE' : 'REAL VOICE';
+
+      const conf = document.createElement('div');
+      conf.className = 'live-conf';
+      conf.textContent = `Confidence: ${(confidence * 100).toFixed(1)}%`;
+
+      display.appendChild(emoji);
+      display.appendChild(verdict);
+      display.appendChild(conf);
+    }
+
+    function addToHistory(isFake, confidence, chunk) {
+      const list = document.getElementById('historyList');
+      const noHist = list.querySelector('.no-history');
+      if (noHist) noHist.remove();
+
+      const time = new Date().toLocaleTimeString();
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      item.innerHTML = `
+    <span class="history-badge ${isFake ? 'fake' : 'real'}">${isFake ? 'FAKE' : 'REAL'}</span>
+    <span class="history-info">Chunk #${chunk} · ${(confidence * 100).toFixed(1)}% confidence</span>
+    <span class="history-time">${time}</span>
+  `;
+
+      list.insertBefore(item, list.firstChild);
+      historyItems.unshift({ isFake, confidence, chunk, time });
+
+      // Keep max 20
+      if (historyItems.length > 20) {
+        historyItems.pop();
+        if (list.lastChild) list.removeChild(list.lastChild);
+      }
+    }
+
+    function clearHistory() {
+      historyItems = [];
+      document.getElementById('historyList').innerHTML = '<div class="no-history">No detections yet</div>';
+    }
+
+    // ════════════════════════════════════════════
+    // LOADING
+    // ════════════════════════════════════════════
+    function showLoading() {
+      // Reset steps
+      document.querySelectorAll('.loading-step').forEach(s => {
+        s.classList.remove('active', 'done');
+      });
+      document.getElementById('loadingOverlay').classList.add('visible');
+    }
+
+    function hideLoading() {
+      document.getElementById('loadingOverlay').classList.remove('visible');
+    }
+
+    // ════════════════════════════════════════════
+    // TOAST
+    // ════════════════════════════════════════════
+    let toastTimer = null;
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('visible');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('visible'), 2800);
+    }
+
+    // ════════════════════════════════════════════
+    // UTILS
+    // ════════════════════════════════════════════
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    // Prevent default drag behaviors on whole page
+    document.addEventListener('dragover', e => e.preventDefault());
+    document.addEventListener('drop', e => e.preventDefault());
+
+    // ════════════════════════════════════════════
+    // LANGUAGE SWITCHER
+    // ════════════════════════════════════════════
+
+    const LANGUAGES = {
+      en: {
+        flag: '🇬🇧', code: 'EN',
+        modelReady: 'MODEL READY',
+        uploadAudio: 'Upload Audio',
+        liveDetection: 'Live Detection',
+        dropTitle: 'Drop audio file here',
+        dropSub: 'or click to browse files',
+        analyzeBtn: 'Analyze',
+        analyzing: 'ANALYZING AUDIO',
+        step1: 'Denoising audio signal',
+        step2: 'Extracting Mel-Spectrogram',
+        step3: 'Computing MFCC features',
+        step4: 'Computing CQCC & IMFCC',
+        step5: 'Analyzing phase spectrum',
+        step6: 'Running deep learning model',
+        aiVoice: '⚠️ AI VOICE DETECTED',
+        realVoice: '✅ REAL VOICE',
+        aiSub: 'Neural vocoder artifacts found across multiple features',
+        realSub: 'Natural speech patterns consistent with human voice',
+        startBtn: 'Start',
+        stopBtn: 'Stop',
+        liveIdle: 'Awaiting audio input...',
+        chunksAnalyzed: 'Chunks analyzed',
+        detectionHistory: 'Detection History',
+        clearBtn: 'CLEAR',
+        noHistory: 'No detections yet',
+        micReady: 'Ready — click Start to begin',
+        micRecording: 'Recording — analyzing every 3 seconds',
+        micStopped: 'Stopped — click Start to begin again',
+        micStarted: '🎙️ Live detection started',
+        micStoppedToast: '⏹️ Live detection stopped',
+        micDenied: '⚠️ Microphone access denied. Please allow mic permissions.',
+        noBackend: '⚠️ Cannot connect to backend. Is the server running?',
+        snrLabel: 'SNR EST.',
+        noiseLbl: 'NOISE LVL',
+        waveLabel: 'Waveform Visualization',
+      },
+      ta: {
+        flag: '🇮🇳', code: 'தமிழ்',
+        modelReady: 'மாடல் தயார்',
+        uploadAudio: 'ஆடியோ பதிவேற்று',
+        liveDetection: 'நேரடி கண்டறிதல்',
+        dropTitle: 'ஆடியோ கோப்பை இங்கே இழுக்கவும்',
+        dropSub: 'அல்லது கோப்புகளை உலாவ கிளிக் செய்யவும்',
+        analyzeBtn: 'பகுப்பாய்வு',
+        analyzing: 'ஆடியோ பகுப்பாய்வு',
+        step1: 'ஆடியோ சமிக்ஞையை சுத்தப்படுத்துகிறது',
+        step2: 'மெல்-ஸ்பெக்ட்ரோகிராம் பிரித்தெடுக்கிறது',
+        step3: 'MFCC அம்சங்கள் கணக்கிடுகிறது',
+        step4: 'CQCC & IMFCC கணக்கிடுகிறது',
+        step5: 'கட்ட நிறமாலை பகுப்பாய்வு',
+        step6: 'ஆழ்நிலை கற்றல் மாடல் இயக்குகிறது',
+        aiVoice: '⚠️ AI குரல் கண்டறியப்பட்டது',
+        realVoice: '✅ உண்மையான குரல்',
+        aiSub: 'பல அம்சங்களில் செயற்கை குரல் கண்டறியப்பட்டது',
+        realSub: 'இயல்பான மனித குரல் முறைகள் கண்டறியப்பட்டன',
+        startBtn: 'தொடங்கு',
+        stopBtn: 'நிறுத்து',
+        liveIdle: 'ஆடியோ உள்ளீட்டிற்காக காத்திருக்கிறது...',
+        chunksAnalyzed: 'பகுப்பாய்வு செய்யப்பட்டவை',
+        detectionHistory: 'கண்டறிதல் வரலாறு',
+        clearBtn: 'அழி',
+        noHistory: 'இன்னும் கண்டறிதல்கள் இல்லை',
+        micReady: 'தயார் — தொடங்கு கிளிக் செய்யவும்',
+        micRecording: 'பதிவு — ஒவ்வொரு 3 நொடியும் பகுப்பாய்வு',
+        micStopped: 'நிறுத்தப்பட்டது — மீண்டும் தொடங்கவும்',
+        micStarted: '🎙️ நேரடி கண்டறிதல் தொடங்கியது',
+        micStoppedToast: '⏹️ நேரடி கண்டறிதல் நிறுத்தப்பட்டது',
+        micDenied: '⚠️ மைக்ரோஃபோன் அனுமதி மறுக்கப்பட்டது',
+        noBackend: '⚠️ பின்தளத்துடன் இணைக்க முடியவில்லை',
+        snrLabel: 'SNR மதிப்பீடு',
+        noiseLbl: 'சத்தம் அளவு',
+        waveLabel: 'அலை வடிவ காட்சி',
+      },
+      hi: {
+        flag: '🇮🇳', code: 'हिंदी',
+        modelReady: 'मॉडल तैयार है',
+        uploadAudio: 'ऑडियो अपलोड करें',
+        liveDetection: 'लाइव डिटेक्शन',
+        dropTitle: 'ऑडियो फ़ाइल यहाँ छोड़ें',
+        dropSub: 'या फ़ाइलें ब्राउज़ करने के लिए क्लिक करें',
+        analyzeBtn: 'विश्लेषण करें',
+        analyzing: 'ऑडियो विश्लेषण हो रहा है',
+        step1: 'ऑडियो सिग्नल डीनॉइज़ करना',
+        step2: 'मेल-स्पेक्ट्रोग्राम निकालना',
+        step3: 'MFCC फीचर्स कंप्यूट करना',
+        step4: 'CQCC और IMFCC कंप्यूट करना',
+        step5: 'फेज स्पेक्ट्रम विश्लेषण',
+        step6: 'डीप लर्निंग मॉडल चला रहे हैं',
+        aiVoice: '⚠️ AI आवाज़ पहचानी गई',
+        realVoice: '✅ असली आवाज़',
+        aiSub: 'कई फीचर्स में AI आवाज़ के संकेत मिले',
+        realSub: 'प्राकृतिक मानव आवाज़ के पैटर्न पाए गए',
+        startBtn: 'शुरू करें',
+        stopBtn: 'रोकें',
+        liveIdle: 'ऑडियो इनपुट की प्रतीक्षा...',
+        chunksAnalyzed: 'विश्लेषण किए गए',
+        detectionHistory: 'डिटेक्शन इतिहास',
+        clearBtn: 'साफ़ करें',
+        noHistory: 'अभी तक कोई डिटेक्शन नहीं',
+        micReady: 'तैयार — शुरू करें पर क्लिक करें',
+        micRecording: 'रिकॉर्डिंग — हर 3 सेकंड में विश्लेषण',
+        micStopped: 'रुका हुआ — फिर से शुरू करें',
+        micStarted: '🎙️ लाइव डिटेक्शन शुरू हुआ',
+        micStoppedToast: '⏹️ लाइव डिटेक्शन रोका गया',
+        micDenied: '⚠️ माइक्रोफोन अनुमति अस्वीकृत',
+        noBackend: '⚠️ बैकएंड से कनेक्ट नहीं हो सका',
+        snrLabel: 'SNR अनुमान',
+        noiseLbl: 'शोर स्तर',
+        waveLabel: 'तरंग दृश्य',
+      },
+      te: {
+        flag: '🇮🇳', code: 'తెలుగు',
+        modelReady: 'మోడల్ సిద్ధంగా ఉంది',
+        uploadAudio: 'ఆడియో అప్‌లోడ్',
+        liveDetection: 'లైవ్ డిటెక్షన్',
+        dropTitle: 'ఆడియో ఫైల్‌ను ఇక్కడ వదలండి',
+        dropSub: 'లేదా ఫైళ్ళను బ్రౌజ్ చేయడానికి క్లిక్ చేయండి',
+        analyzeBtn: 'విశ్లేషించు',
+        analyzing: 'ఆడియో విశ్లేషించబడుతోంది',
+        step1: 'ఆడియో సిగ్నల్ డీనాయిజ్',
+        step2: 'మెల్-స్పెక్ట్రోగ్రామ్ వెలికితీత',
+        step3: 'MFCC ఫీచర్లు లెక్కిస్తోంది',
+        step4: 'CQCC & IMFCC లెక్కిస్తోంది',
+        step5: 'ఫేజ్ స్పెక్ట్రమ్ విశ్లేషణ',
+        step6: 'డీప్ లెర్నింగ్ మోడల్ రన్నింగ్',
+        aiVoice: '⚠️ AI వాయిస్ గుర్తించబడింది',
+        realVoice: '✅ నిజమైన వాయిస్',
+        aiSub: 'బహుళ ఫీచర్లలో AI వాయిస్ సంకేతాలు',
+        realSub: 'సహజ మానవ వాయిస్ నమూనాలు గుర్తించబడ్డాయి',
+        startBtn: 'ప్రారంభించు',
+        stopBtn: 'ఆపు',
+        liveIdle: 'ఆడియో ఇన్‌పుట్ కోసం వేచి ఉంది...',
+        chunksAnalyzed: 'విశ్లేషించబడిన చంక్స్',
+        detectionHistory: 'డిటెక్షన్ చరిత్ర',
+        clearBtn: 'క్లియర్',
+        noHistory: 'ఇంకా డిటెక్షన్లు లేవు',
+        micReady: 'సిద్ధం — స్టార్ట్ క్లిక్ చేయండి',
+        micRecording: 'రికార్డింగ్ — ప్రతి 3 సెకన్లకు విశ్లేషణ',
+        micStopped: 'ఆపివేయబడింది — మళ్ళీ ప్రారంభించండి',
+        micStarted: '🎙️ లైవ్ డిటెక్షన్ ప్రారంభమైంది',
+        micStoppedToast: '⏹️ లైవ్ డిటెక్షన్ ఆపివేయబడింది',
+        micDenied: '⚠️ మైక్రోఫోన్ అనుమతి నిరాకరించబడింది',
+        noBackend: '⚠️ బ్యాకెండ్‌కు కనెక్ట్ అవ్వడం సాధ్యపడలేదు',
+        snrLabel: 'SNR అంచనా',
+        noiseLbl: 'నాయిస్ స్థాయి',
+        waveLabel: 'వేవ్‌ఫార్మ్ విజువలైజేషన్',
+      },
+    };
+
+    let currentLang = 'en';
+
+    function toggleLangDropdown() {
+      document.getElementById('langDropdown').classList.toggle('open');
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function (e) {
+      const switcher = document.getElementById('langSwitcher');
+      if (switcher && !switcher.contains(e.target)) {
+        document.getElementById('langDropdown').classList.remove('open');
+      }
+    });
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      const t = LANGUAGES[lang];
+
+      // Update dropdown button
+      document.getElementById('currentFlag').textContent = t.flag;
+      document.getElementById('currentLangCode').textContent = t.code;
+
+      // Update active state in dropdown
+      document.querySelectorAll('.lang-option').forEach(opt => opt.classList.remove('active'));
+      document.querySelectorAll('.lang-check').forEach(c => c.style.display = 'none');
+      document.getElementById('check-' + lang).style.display = 'inline';
+
+      // Close dropdown
+      document.getElementById('langDropdown').classList.remove('open');
+
+      // ── Apply translations ──
+      applyTranslations(t);
+
+      // Save preference
+      localStorage.setItem('voiceguard-lang', lang);
+      showToast('🌐 ' + t.code);
+    }
+
+    function applyTranslations(t) {
+      // All data-i18n elements
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (t[key]) el.textContent = t[key];
+      });
+
+      // Upload zone
+      const dropTitle = document.querySelector('.upload-zone h2');
+      const dropSub = document.querySelector('.upload-zone p');
+      if (dropTitle) dropTitle.textContent = t.dropTitle;
+      if (dropSub) dropSub.textContent = t.dropSub;
+
+      // Analyze button
+      const analyzeBtn = document.getElementById('analyzeBtn');
+      if (analyzeBtn) analyzeBtn.textContent = t.analyzeBtn;
+
+      // Loading text
+      const loadingText = document.querySelector('.loading-text');
+      if (loadingText) loadingText.textContent = t.analyzing;
+
+      // Loading steps
+      const steps = ['step1', 'step2', 'step3', 'step4', 'step5', 'step6'];
+      steps.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          const dot = el.querySelector('.step-dot');
+          el.textContent = '';
+          if (dot) el.appendChild(dot);
+          el.appendChild(document.createTextNode(' ' + t[id]));
+        }
+      });
+
+      // Live detection buttons
+      const startBtn = document.getElementById('startBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      if (startBtn) startBtn.innerHTML = startBtn.innerHTML.replace(/>[^<]+$/, `>${t.startBtn}`);
+      if (stopBtn) stopBtn.innerHTML = stopBtn.innerHTML.replace(/>[^<]+$/, `>${t.stopBtn}`);
+
+      // Live status
+      const liveStatusText = document.getElementById('liveStatusText');
+      if (liveStatusText && !isRecording) liveStatusText.textContent = t.micReady;
+
+      // Chunk counter
+      const chunkCounter = document.getElementById('chunkCounter');
+      if (chunkCounter) chunkCounter.textContent = t.chunksAnalyzed + ': ' + chunkCount;
+
+      // Waveform label
+      const waveLabel = document.querySelector('.waveform-label');
+      if (waveLabel) waveLabel.textContent = t.waveLabel;
+
+      // Clear button
+      const clearSpan = document.querySelector('[onclick="clearHistory()"]');
+      if (clearSpan) clearSpan.textContent = t.clearBtn;
+
+      // No history text
+      const noHist = document.querySelector('.no-history');
+      if (noHist) noHist.textContent = t.noHistory;
+
+      // SNR labels
+      const snrLabels = document.querySelectorAll('.noise-label');
+      snrLabels.forEach((el, i) => {
+        el.textContent = i === 0 ? t.snrLabel : t.noiseLbl;
+      });
+
+      // Live idle text
+      const liveIdle = document.querySelector('.live-idle-text');
+      if (liveIdle) liveIdle.textContent = t.liveIdle;
+    }
+
+    // Load saved language on page load
+    window.addEventListener('load', function () {
+      const saved = localStorage.getItem('voiceguard-lang') || 'en';
+      if (saved !== 'en') setLanguage(saved);
+    });
+  </script>
+</body>
+
+</html>

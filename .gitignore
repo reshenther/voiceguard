@@ -1,0 +1,31 @@
+# Virtual environments
+venv/
+venv312/
+venv*/
+*.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Data folders (too large for GitHub)
+data/real/
+data/fake/
+data/selective/
+data/feature_cache/
+
+# Model weights (too large for GitHub)
+*.pt
+*.pth
+
+# VS Code settings
+.vscode/
+
+# Logs and env files
+*.log
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
